@@ -1,0 +1,11 @@
+# ใช้ PyTorch แบบ CPU-only เพื่อลดขนาดการติดตั้งบน Streamlit Community Cloud
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+streamlit>=1.50
+sentence-transformers>=3.0
+faiss-cpu
+groq
+pythainlp
+pypdf
+numpy
+pandas
