@@ -1,6 +1,10 @@
 """
 app.py — น้องพร้อมรับ: แชตบอต RAG ตอบคำถามประกันภัยพิบัติแห่งชาติ & เงินเยียวยาน้ำท่วม 2569
 รันในเครื่อง:  streamlit run app.py
+
+โครงหน้าเว็บ
+- หน้าหลัก (ผู้ใช้ทั่วไป): แชต + คำถามแนะนำ + แหล่งอ้างอิงใต้คำตอบ
+- แถบด้านข้าง: ปุ่มเริ่มแชตใหม่, เบอร์สำคัญ, และเมนู "ผู้ดูแลระบบ" (ตั้งค่าการค้นหา / ทดสอบระบบ / ดูเอกสาร)
 """
 
 import os
@@ -21,32 +25,83 @@ from rag_core import (
     make_sentence_transformer_embedder,
 )
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-TEST_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_questions.csv")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+TEST_CSV = os.path.join(BASE_DIR, "test_questions.csv")
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 FALLBACK_MODEL = "openai/gpt-oss-20b"
 
 EXAMPLE_QUESTIONS = [
-    "น้ำท่วมบ้าน ประกันภัยพิบัติจ่ายเท่าไหร่",
-    "ต้องลงทะเบียนก่อนไหมถึงจะได้รับความคุ้มครอง",
-    "บ้านท่วมตั้งแต่เดือนกันยายน เคลมประกันได้ไหม",
-    "แจ้งเคลมได้ทางไหนบ้าง ต้องใช้เอกสารอะไร",
-    "ทีวีกับตู้เย็นเสียหายจากน้ำท่วม ได้รับความคุ้มครองไหม",
-    "มีคนโทรมาขอ OTP บอกว่าจะโอนเงินเยียวยา ทำยังไงดี",
+    ("💧", "น้ำท่วมบ้าน ได้เงินเท่าไหร่"),
+    ("📝", "ต้องลงทะเบียนก่อนไหม"),
+    ("📅", "บ้านท่วมตั้งแต่เดือนกันยายน เคลมได้ไหม"),
+    ("📲", "แจ้งเคลมทางไหน ใช้เอกสารอะไร"),
+    ("📺", "ทีวี ตู้เย็นเสียหาย ได้รับความคุ้มครองไหม"),
+    ("⚠️", "มีคนโทรมาขอ OTP บอกจะโอนเงินเยียวยา"),
 ]
 
-st.set_page_config(page_title="น้องพร้อมรับ | ประกันภัยพิบัติ & เยียวยาน้ำท่วม", page_icon="🌊", layout="wide")
+HOTLINES = [
+    ("ประกันภัยพิบัติ (ThaiNATCAT)", "02-012-5555"),
+    ("ปภ. แจ้งเหตุสาธารณภัย", "1784"),
+    ("เจ็บป่วยฉุกเฉิน", "1669"),
+    ("กทม.", "1555"),
+    ("แจ้งถูกหลอกออนไลน์", "1441"),
+]
+
+st.set_page_config(
+    page_title="น้องพร้อมรับ | ถามเรื่องประกันภัยพิบัติ & เงินเยียวยาน้ำท่วม",
+    page_icon="🌊",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
+
+# ---------------------------------------------------------------------------
+# สไตล์หน้าเว็บ
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+    html, body, [class*="css"], .stMarkdown, .stChatMessage, button, input, textarea {
+        font-family: 'Sarabun', sans-serif !important;
+    }
+    #MainMenu, footer, [data-testid="stToolbar"] {visibility: hidden;}
+    header[data-testid="stHeader"] {background: transparent;}
+    .block-container {padding-top: 3.5rem; padding-bottom: 6rem; max-width: 760px;}
+    .hero {
+        background: linear-gradient(135deg, #0E7490 0%, #0891B2 60%, #22D3EE 100%);
+        color: #fff; border-radius: 18px; padding: 22px 24px; margin-bottom: 14px;
+    }
+    .hero h1 {color:#fff; font-size: 1.65rem; margin: 0 0 4px 0; padding:0;}
+    .hero p {margin: 0; opacity: .95; font-size: 1.02rem;}
+    .facts {display:flex; gap:10px; margin: 6px 0 18px 0; flex-wrap: wrap;}
+    .fact {
+        flex: 1 1 150px; background:#F0F9FB; border:1px solid #CDEAF0; border-radius:14px;
+        padding:10px 14px;
+    }
+    .fact .v {font-size:1.15rem; font-weight:700; color:#0E7490; line-height:1.3;}
+    .fact .k {font-size:.85rem; color:#4B5563;}
+    .src-title {font-weight:600; margin-bottom:2px;}
+    .src-meta {font-size:.82rem; color:#6B7280; margin-bottom:6px;}
+    .src-body {font-size:.9rem; background:#F9FAFB; border-left:3px solid #0891B2;
+               padding:8px 10px; border-radius:6px; white-space:pre-wrap;}
+    .note {font-size:.8rem; color:#6B7280; text-align:center; margin-top: 8px;}
+    div[data-testid="stButton"] > button {border-radius: 999px;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ---------------------------------------------------------------------------
 # โหลดโมเดลและ index เพียงครั้งเดียว (cache) — สำคัญมากบน Streamlit Community Cloud
 # ---------------------------------------------------------------------------
-@st.cache_resource(show_spinner="กำลังโหลดโมเดล Embedding (ครั้งแรกอาจใช้เวลา 1-2 นาที)...")
+@st.cache_resource(show_spinner="กำลังเตรียมผู้ช่วย... (ครั้งแรกอาจใช้เวลา 1-2 นาที)")
 def get_embedder():
     return make_sentence_transformer_embedder(EMBEDDING_MODEL_NAME)
 
 
-@st.cache_resource(show_spinner="กำลังเตรียมเอกสารและสร้าง FAISS index...")
+@st.cache_resource(show_spinner="กำลังเตรียมเอกสารความรู้...")
 def get_vector_store():
     docs = load_documents(DATA_DIR)
     chunks = chunk_documents(docs)
@@ -75,6 +130,15 @@ def get_model_name() -> str:
         return st.secrets.get("GROQ_MODEL", DEFAULT_MODEL)
     except Exception:
         return DEFAULT_MODEL
+
+
+# ---------------------------------------------------------------------------
+# ค่าตั้งค่า (เก็บใน session_state เพื่อให้เมนูผู้ดูแลระบบปรับได้)
+# ---------------------------------------------------------------------------
+DEFAULTS = {"top_k": 4, "threshold": 0.0, "use_condense": True, "show_debug": False, "page": "chat"}
+for k, v in DEFAULTS.items():
+    st.session_state.setdefault(k, v)
+st.session_state.setdefault("messages", [])
 
 
 # ---------------------------------------------------------------------------
@@ -122,117 +186,119 @@ def stream_answer(messages):
 
 
 # ---------------------------------------------------------------------------
-# แสดงแหล่งอ้างอิง
+# แสดงแหล่งอ้างอิง (แบบเรียบง่ายสำหรับผู้ใช้ / แบบละเอียดเมื่อเปิดโหมดผู้ดูแล)
 # ---------------------------------------------------------------------------
+def _esc(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def render_sources(results: list[dict], answer: str, search_query: str):
     used = cited_ranks(answer)
     refused = is_refusal(answer)
+    debug = st.session_state.show_debug
+
     if refused:
-        label = f"📚 เอกสารที่ระบบค้นพบ {len(results)} รายการ (ไม่มีข้อมูลที่ตอบคำถามนี้ได้)"
+        shown = results
+        label = "🔍 เอกสารที่ใกล้เคียงที่สุด (ไม่มีคำตอบของคำถามนี้)"
     else:
-        label = f"📚 แหล่งอ้างอิงที่ใช้ตอบ ({len(used) or len(results)} จาก {len(results)} รายการที่ค้นพบ)"
+        shown = [r for r in results if r["rank"] in used] or results
+        label = f"📚 ดูแหล่งอ้างอิง ({len(shown)})"
+
+    if debug:
+        shown = results  # โหมดผู้ดูแล: แสดงทุก chunk ที่ค้นได้
+
     with st.expander(label, expanded=False):
-        st.caption(f"🔎 คำค้นที่ใช้ค้นหา: {search_query}")
-        if not results:
-            st.info("ไม่พบเอกสารที่ผ่านเกณฑ์ความคล้าย (Similarity Threshold)")
-        for r in results:
-            mark = "✅ ใช้ตอบ" if r["rank"] in used else "▫️ ค้นพบ"
+        if debug:
+            st.caption(f"🔎 คำค้นที่ใช้: {search_query} · Top-k = {st.session_state.top_k}")
+        if not shown:
+            st.caption("ไม่พบเอกสารที่เกี่ยวข้อง")
+        for r in shown:
+            body = r["text"].split("\n", 2)[-1]
+            body = body[:450] + ("..." if len(body) > 450 else "")
+            meta = f"ข้อมูล ณ {r['as_of']}"
+            if debug:
+                status = "✅ ใช้ตอบ" if r["rank"] in used else "▫️ ค้นพบ"
+                meta = f"{status} · score {r['score']:.3f} · {r['file_name']} · {meta}"
             st.markdown(
-                f"**[{r['rank']}] {r['doc_title']}** — {r['section']}  \n"
-                f"{mark} · score = `{r['score']:.3f}` · ไฟล์ `{r['file_name']}` · ข้อมูล ณ {r['as_of']}"
+                f"<div class='src-title'>[{r['rank']}] {_esc(r['doc_title'])}</div>"
+                f"<div class='src-meta'>หัวข้อ: {_esc(r['section'])} · {_esc(meta)}</div>"
+                f"<div class='src-body'>{_esc(body)}</div>",
+                unsafe_allow_html=True,
             )
             st.caption(f"ที่มา: {r['source']}")
-            body = r["text"].split("\n", 2)[-1]
-            st.text(body[:600] + ("..." if len(body) > 600 else ""))
-            st.divider()
 
 
 # ---------------------------------------------------------------------------
-# Sidebar
+# โหลดข้อมูล
 # ---------------------------------------------------------------------------
 docs, chunks, store = get_vector_store()
 
+
+# ---------------------------------------------------------------------------
+# Sidebar: สำหรับผู้ใช้ด้านบน / เมนูผู้ดูแลระบบซ่อนไว้ด้านล่าง
+# ---------------------------------------------------------------------------
 with st.sidebar:
-    st.title("🌊 น้องพร้อมรับ")
-    st.caption("ผู้ช่วยตอบคำถามประกันภัยพิบัติแห่งชาติ & เงินเยียวยาน้ำท่วม ปี 2569")
-    page = st.radio("เมนู", ["💬 แชตถามตอบ", "📊 ทดสอบระบบ", "📁 เอกสารในระบบ"], label_visibility="collapsed")
-
-    st.subheader("⚙️ ตั้งค่าการค้นหา")
-    top_k = st.slider("Top-k (จำนวน chunk ที่ดึงมา)", 1, 8, 4)
-    threshold = st.slider(
-        "Similarity Threshold (0 = ปิด)", 0.0, 0.95, 0.0, 0.01,
-        help="chunk ที่คะแนนต่ำกว่านี้จะไม่ถูกส่งให้ LLM ถ้าไม่เหลือเลย ระบบจะตอบว่าไม่พบข้อมูลทันที",
-    )
-    use_condense = st.toggle("เขียนคำถามต่อเนื่องใหม่ก่อนค้นหา", value=True,
-                             help="ช่วยให้คำถามอย่าง 'แล้วถ้าเป็นพายุล่ะ' ค้นเอกสารได้ถูก")
-
-    if st.button("🗑️ ล้างประวัติแชต", width="stretch"):
+    st.markdown("### 🌊 น้องพร้อมรับ")
+    if st.button("✨ เริ่มแชตใหม่", width="stretch"):
         st.session_state.messages = []
+        st.session_state.page = "chat"
         st.rerun()
 
+    st.markdown("**📞 เบอร์สำคัญ**")
+    for name, num in HOTLINES:
+        st.markdown(f"{name}  \n**{num}**")
+
     st.divider()
-    st.caption(
-        f"เอกสาร {len(docs)} ไฟล์ · {len(chunks)} chunks  \n"
-        f"Embedding: `{EMBEDDING_MODEL_NAME}`  \nLLM: `{get_model_name()}` (Groq)"
-    )
-    st.caption("⚠️ ข้อมูลรวบรวม ณ 7 ต.ค. 2569 จากข่าวและประกาศทางการ ใช้เพื่อการศึกษา "
-               "โปรดตรวจสอบสิทธิ์จริงกับ ThaiNATCAT 02-012-5555 หรือ ปภ. 1784")
+    with st.expander("🛠️ ผู้ดูแลระบบ"):
+        page_labels = {"chat": "💬 แชต", "eval": "🧪 ทดสอบระบบ", "docs": "📁 เอกสารในระบบ"}
+        st.radio(
+            "หน้า", list(page_labels), key="page",
+            format_func=lambda p: page_labels[p], label_visibility="collapsed",
+        )
+        st.markdown("**ตั้งค่าการค้นหา**")
+        st.slider("Top-k (จำนวน chunk ที่ดึงมา)", 1, 8, key="top_k")
+        st.slider(
+            "Similarity Threshold (0 = ปิด)", 0.0, 0.95, step=0.01, key="threshold",
+            help="chunk ที่คะแนนต่ำกว่านี้จะไม่ถูกส่งให้ LLM ถ้าไม่เหลือเลย ระบบตอบว่าไม่พบข้อมูลทันที",
+        )
+        st.toggle("เขียนคำถามต่อเนื่องใหม่ก่อนค้นหา", key="use_condense")
+        st.toggle("แสดงรายละเอียดการค้นหา (score, ไฟล์)", key="show_debug")
+        st.caption(
+            f"{len(docs)} ไฟล์ · {len(chunks)} chunks  \n"
+            f"Embedding: `{EMBEDDING_MODEL_NAME}`  \nLLM: `{get_model_name()}` (Groq)"
+        )
 
 
 # ---------------------------------------------------------------------------
-# หน้า 1: แชต
+# หน้า: แชต (หน้าหลัก)
 # ---------------------------------------------------------------------------
-def page_chat():
-    st.header("💬 ถามเรื่องประกันภัยพิบัติ & เงินเยียวยาน้ำท่วม")
-
-    if get_groq_client() is None:
-        st.error("ยังไม่ได้ตั้งค่า GROQ_API_KEY ใน Secrets — ไปที่ App settings → Secrets แล้วเพิ่ม "
-                 '`GROQ_API_KEY = "gsk_..."`')
-        st.stop()
-
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    if not st.session_state.messages:
-        st.info("ลองกดคำถามตัวอย่าง หรือพิมพ์คำถามของคุณที่ช่องด้านล่าง")
-        cols = st.columns(2)
-        for i, q in enumerate(EXAMPLE_QUESTIONS):
-            if cols[i % 2].button(q, key=f"ex_{i}", width="stretch"):
-                st.session_state.pending_question = q
-                st.rerun()
-
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"], avatar="🙋" if msg["role"] == "user" else "🌊"):
-            st.markdown(msg["content"])
-            if msg["role"] == "assistant" and "results" in msg:
-                render_sources(msg["results"], msg["content"], msg.get("search_query", ""))
-
-    question = st.chat_input("พิมพ์คำถาม เช่น บ้านโดนพายุพัดหลังคาเสียหาย ได้เงินเท่าไหร่")
-    if not question and st.session_state.get("pending_question"):
-        question = st.session_state.pop("pending_question")
-    if not question:
-        return
-
+def ask(question: str):
+    """ประมวลผลคำถาม 1 ข้อ: ค้นหา -> สร้าง prompt -> สตรีมคำตอบ -> แสดงแหล่งอ้างอิง"""
     history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user", avatar="🙋"):
         st.markdown(question)
 
     with st.chat_message("assistant", avatar="🌊"):
-        with st.spinner("กำลังค้นหาเอกสาร..."):
-            search_query = condense_question(question, history) if use_condense else question
-            results = store.search(search_query, top_k=top_k, threshold=threshold)
+        with st.spinner("กำลังค้นข้อมูลให้..."):
+            search_query = (
+                condense_question(question, history) if st.session_state.use_condense else question
+            )
+            results = store.search(
+                search_query, top_k=st.session_state.top_k, threshold=st.session_state.threshold
+            )
 
         if not results:
             answer = NOT_FOUND_MESSAGE
             st.markdown(answer)
         else:
-            messages = build_messages(question, results, history)
             try:
-                answer = st.write_stream(stream_answer(messages))
+                answer = st.write_stream(stream_answer(build_messages(question, results, history)))
             except Exception as e:
-                answer = f"เกิดข้อผิดพลาดในการเรียก LLM: {e}"
+                answer = "ขออภัย ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง"
                 st.error(answer)
+                if st.session_state.show_debug:
+                    st.exception(e)
         render_sources(results, answer, search_query)
 
     st.session_state.messages.append(
@@ -240,21 +306,75 @@ def page_chat():
     )
 
 
+def page_chat():
+    if get_groq_client() is None:
+        st.error("ระบบยังไม่พร้อมใช้งาน: ผู้ดูแลยังไม่ได้ตั้งค่า GROQ_API_KEY ใน Secrets")
+        st.stop()
+
+    first_visit = not st.session_state.messages
+
+    if first_visit:
+        st.markdown(
+            """
+            <div class="hero">
+              <h1>🌊 น้องพร้อมรับ</h1>
+              <p>ถามเรื่องประกันภัยพิบัติแห่งชาติ และเงินเยียวยาน้ำท่วม ปี 2569 ได้เลย
+              ทุกคำตอบอ้างอิงจากข่าวและประกาศทางการ</p>
+            </div>
+            <div class="facts">
+              <div class="fact"><div class="v">1 ต.ค. 69</div><div class="k">เริ่มคุ้มครอง</div></div>
+              <div class="fact"><div class="v">100,000 บาท</div><div class="k">สูงสุดต่อหลังต่อครั้ง</div></div>
+              <div class="fact"><div class="v">ไม่ต้องลงทะเบียน</div><div class="k">ได้สิทธิ์อัตโนมัติ</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown("**ลองถามเรื่องเหล่านี้**")
+        cols = st.columns(2)
+        for i, (icon, q) in enumerate(EXAMPLE_QUESTIONS):
+            if cols[i % 2].button(f"{icon} {q}", key=f"ex_{i}", width="stretch"):
+                st.session_state.pending_question = q
+                st.rerun()
+    else:
+        st.markdown("#### 🌊 น้องพร้อมรับ")
+
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"], avatar="🙋" if msg["role"] == "user" else "🌊"):
+            st.markdown(msg["content"])
+            if msg["role"] == "assistant" and "results" in msg:
+                render_sources(msg["results"], msg["content"], msg.get("search_query", ""))
+
+    question = st.chat_input("พิมพ์คำถาม เช่น หลังคาบ้านโดนพายุพัด ได้เงินเท่าไหร่")
+    if not question and st.session_state.get("pending_question"):
+        question = st.session_state.pop("pending_question")
+    if question:
+        ask(question)
+
+    st.markdown(
+        "<div class='note'>ข้อมูล ณ 7 ต.ค. 2569 ใช้เพื่อการศึกษา · ตรวจสอบสิทธิ์จริงได้ที่ "
+        "ThaiNATCAT 02-012-5555 หรือ ปภ. 1784</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
-# หน้า 2: ทดสอบระบบด้วย test_questions.csv
+# หน้า: ทดสอบระบบ (ผู้ดูแล)
 # ---------------------------------------------------------------------------
 def page_eval():
-    st.header("📊 ทดสอบระบบด้วยชุดคำถาม test_questions.csv")
+    st.subheader("🧪 ทดสอบระบบด้วย test_questions.csv")
+    top_k = st.session_state.top_k
     df = pd.read_csv(TEST_CSV)
-    st.dataframe(df, width="stretch", hide_index=True)
+    with st.expander(f"ดูชุดคำถามทดสอบ ({len(df)} ข้อ)"):
+        st.dataframe(df, width="stretch", hide_index=True)
 
-    st.subheader("1) ประเมิน Retrieval (ไม่ใช้ LLM)")
-    st.caption("Hit@k = ใน Top-k มีไฟล์ที่ควรเจอ (expected_source) อย่างน้อย 1 รายการหรือไม่ — คิดเฉพาะคำถามที่มีคำตอบ")
+    st.markdown("**1) Retrieval** — Hit@k: ใน Top-k มีไฟล์ที่ควรเจออย่างน้อย 1 รายการหรือไม่")
     rows = []
     for _, r in df.iterrows():
         res = store.search(r["question"], top_k=top_k)
         files = [x["file_name"] for x in res]
         expected = str(r.get("expected_source", "") or "")
+        if expected == "nan":
+            expected = ""
         answerable = str(r["answerable"]).strip().lower() in ("yes", "true", "1")
         hit = (expected in files) if answerable else None
         rows.append({
@@ -266,11 +386,10 @@ def page_eval():
     ret_df = pd.DataFrame(rows)
     answerable_rows = ret_df[ret_df["answerable"]]
     hit_rate = (answerable_rows[f"hit@{top_k}"] == "✅").mean() if len(answerable_rows) else 0
-    st.metric(f"Hit Rate@{top_k}", f"{hit_rate:.0%}", help="ค่าเฉลี่ยของ 0/1 ทุกคำถามที่มีคำตอบ")
+    st.metric(f"Hit Rate@{top_k}", f"{hit_rate:.0%}")
     st.dataframe(ret_df, width="stretch", hide_index=True)
 
-    st.subheader("2) ประเมินคำตอบจาก LLM (End-to-end)")
-    st.caption("จะเรียก Groq API 1 ครั้งต่อคำถาม · ตรวจว่าคำถามที่ไม่มีคำตอบถูกปฏิเสธ และคำถามที่มีคำตอบไม่ถูกปฏิเสธ")
+    st.markdown("**2) End-to-end** — คำถามที่ไม่มีคำตอบต้องถูกปฏิเสธ และคำถามที่มีคำตอบต้องไม่ถูกปฏิเสธ")
     if get_groq_client() is None:
         st.warning("ต้องตั้งค่า GROQ_API_KEY ก่อน")
         return
@@ -278,38 +397,35 @@ def page_eval():
         out = []
         bar = st.progress(0.0)
         for i, r in df.iterrows():
-            res = store.search(r["question"], top_k=top_k, threshold=threshold)
+            res = store.search(r["question"], top_k=top_k, threshold=st.session_state.threshold)
             if res:
                 resp = llm_complete(build_messages(r["question"], res))
                 ans = resp.choices[0].message.content or ""
             else:
                 ans = NOT_FOUND_MESSAGE
             answerable = str(r["answerable"]).strip().lower() in ("yes", "true", "1")
-            refused = is_refusal(ans)
             out.append({
                 "id": r["id"], "question": r["question"], "expected_answer": r["expected_answer"],
                 "system_answer": ans,
-                "behavior_ok": "✅" if refused != answerable else "❌",
+                "behavior_ok": "✅" if is_refusal(ans) != answerable else "❌",
                 "cited": ", ".join(f"[{n}]" for n in sorted(cited_ranks(ans))) or "-",
             })
             bar.progress((i + 1) / len(df))
         out_df = pd.DataFrame(out)
-        ok_rate = (out_df["behavior_ok"] == "✅").mean()
-        st.metric("ตอบ/ปฏิเสธ ได้ถูกประเภท", f"{ok_rate:.0%}")
+        st.metric("ตอบ/ปฏิเสธ ได้ถูกประเภท", f"{(out_df['behavior_ok'] == '✅').mean():.0%}")
         st.dataframe(out_df, width="stretch", hide_index=True)
-        st.caption("คอลัมน์ expected_answer ใช้เทียบความถูกต้องของเนื้อหาด้วยตนเอง (manual check)")
+        st.caption("เทียบ system_answer กับ expected_answer ด้วยตนเองเพื่อตรวจความถูกต้องของเนื้อหา")
 
 
 # ---------------------------------------------------------------------------
-# หน้า 3: เอกสารในระบบ
+# หน้า: เอกสารในระบบ (ผู้ดูแล)
 # ---------------------------------------------------------------------------
 def page_docs():
-    st.header("📁 เอกสารความรู้ในระบบ")
-    total_chars = sum(len(d.text) for d in docs)
+    st.subheader("📁 เอกสารความรู้ในระบบ")
     c1, c2, c3 = st.columns(3)
     c1.metric("จำนวนไฟล์", len(docs))
     c2.metric("จำนวน chunks", len(chunks))
-    c3.metric("ตัวอักษรรวม", f"{total_chars:,}")
+    c3.metric("ตัวอักษรรวม", f"{sum(len(d.text) for d in docs):,}")
 
     for d in docs:
         n = sum(1 for c in chunks if c.file_name == d.file_name)
@@ -322,9 +438,9 @@ def page_docs():
                     st.text(c.text.split("\n", 2)[-1])
 
 
-if page.startswith("💬"):
-    page_chat()
-elif page.startswith("📊"):
+if st.session_state.page == "eval":
     page_eval()
-else:
+elif st.session_state.page == "docs":
     page_docs()
+else:
+    page_chat()
